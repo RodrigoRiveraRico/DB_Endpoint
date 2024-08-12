@@ -30,7 +30,7 @@ def fetch_variables():
                      )
 
         row = curs.fetchone() # Devuelve una tupla
-
+    conn.close()
     return jsonify(row[0])
 
     
