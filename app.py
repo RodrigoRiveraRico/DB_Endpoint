@@ -19,19 +19,19 @@ def fetch_variables():
     conn = psycopg2.connect(conn_string)
 
     with conn.cursor() as curs:
-        curs.execute("""with aux as (
-                        select id, name, mesh
-                            from covariable
+        curs.execute("""
+                     WITH aux AS (
+                        SELECT id, name, mesh AS available_grids, 0 AS "level_size", '{}' as "filter_fields"
+                        FROM covariable
                         )
-                        select json_agg(aux) from aux;"""
+                    SELECT json_agg(aux) FROM aux
+                     ;
+                     """
                      )
 
-        r = curs.fetchone()
+        row = curs.fetchone() # Devuelve una tupla
 
-        # print(r[0][0])
-
-
-    return jsonify(r[0])
+    return jsonify(row[0])
 
     
 
