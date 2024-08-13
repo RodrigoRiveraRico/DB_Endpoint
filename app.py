@@ -25,7 +25,7 @@ def fetch_variables():
     with conn.cursor() as curs:
         curs.execute("""
                      WITH aux AS (
-                        SELECT id, name, '{}' AS available_grids, 0 AS "level_size", '{}' as "filter_fields"
+                        SELECT id, name, ARRAY[mesh] :: varchar[] AS available_grids, 0 AS "level_size", ARRAY[] :: varchar[] as "filter_fields"
                         FROM covariable
                         )
                     SELECT json_agg(aux) FROM aux
