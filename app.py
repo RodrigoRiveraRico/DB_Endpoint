@@ -9,14 +9,18 @@ dbport = '5433'
 dbuser = 'monitor'
 dbpass = 'monitor123'
 
+def conexion():
+    conn_string = f'host={dbhost} dbname={dbname} user={dbuser} password={dbpass} port={dbport}'
+    conn = psycopg2.connect(conn_string)
+    return conn
+
 @app.route('/')
 def saludo():
     return jsonify({'hola':'mundo'})
 
 @app.route('/variables')
 def fetch_variables():
-    conn_string = f'host={dbhost} dbname={dbname} user={dbuser} password={dbpass} port={dbport}'
-    conn = psycopg2.connect(conn_string)
+    conn = conexion()
 
     with conn.cursor() as curs:
         curs.execute("""
