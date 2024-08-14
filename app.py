@@ -41,37 +41,6 @@ def fetch_variables():
     conn.close()
     return jsonify(row[0])
 
-@app.route('/get-data/<id>')
-def get_data(id):
-    grid_id = request.args.get('grid_id') # mun | state | ageb
-    levels_id = request.args.get('levels_id')
-    filter_names = request.args.get('filter_names')
-    filter_values = request.args.get('filter_values')
-
-    conn = conexion()
-
-    with conn.cursor() as curs:
-        curs.execute(f"""
-                     WITH aux AS (
-                        SELECT id, 
-                            '{grid_id}' as "grid_id", 
-                            0 as "level_id", 
-                            cells_{grid_id} :: integer[] as cells, 
-                            array_length(cells_{grid_id},1) as n
-                        FROM covariable
-                        WHERE id = {id}
-                        )
-                    SELECT json_agg(aux) FROM aux
-                     ;
-                     """
-                     )
-
-        row = curs.fetchone() # Devuelve una tupla
-    conn.close()
-    return jsonify(row[0])
-    
-
-
 @app.route('/variables/<id>')
 def variables_id(id):
     conn_string = f'host={dbhost} dbname={dbname} user={dbuser} password={dbpass} port={dbport}'
@@ -99,11 +68,10 @@ def variables_id(id):
 
     return jsonify(result)
 
-
 @app.route('/get-data/<id>')
 def get_data_id(id):
-    conn_string = f'host={dbhost} dbname={dbname} user={dbuser} password={dbpass} port={dbport}'
-    conn = psycopg2.connect(conn_string)
+    conn = conexion()
+    grid_id = request.args.get('grid_id') # mun | state | ageb
 
     # Desde la URL (Query Strings): (ej. levels_id=1,2,3)
     levels_id = request.args.get('levels_id', type=lambda v: v.split(','))
@@ -121,14 +89,27 @@ def get_data_id(id):
     # filter_names = request.form.get('filter_names').split(',')
     # filter_values = request.form.get('filter_values').split(',')
 
-    rensponse_data = {
-        'id':int(id),
-        'levels_id':levels_id,
-        'filter_names': filter_names,
-        'filter_values' : filter_values
-    }
+    with conn.cursor() as curs:
+        curs.execute(f"""
+                     WITH aux AS (
+                        SELECT id, 
+                            '{grid_id}' as "grid_id", 
+                            0 as "level_id", 
+                            cells_{grid_id} :: integer[] as cells, 
+                            array_length(cells_{grid_id},1) as n
+                        FROM covariable
+                        WHERE id = {id}
+                        )
+                    SELECT json_agg(aux) FROM aux
+                     ;
+                     """
+                     )
 
-    return jsonify(rensponse_data)
+        row = curs.fetchone() # Devuelve una tupla
+    conn.close()
+
+    return jsonify(row[0])
+
 
 
 if __name__ == '__main__':
