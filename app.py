@@ -26,7 +26,7 @@ def fetch_variables():
         curs.execute("""
                      WITH aux AS (
                         SELECT id, 
-                            name, 
+                            CONCAT(name, '_-_', interval) AS name, 
                             ARRAY[mesh] :: varchar[] AS available_grids, 
                             0 AS "level_size", 
                             ARRAY[] :: varchar[] as "filter_fields"
