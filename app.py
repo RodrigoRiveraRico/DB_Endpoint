@@ -4,7 +4,7 @@ import psycopg2
 app = Flask(__name__)
 
 dbhost = 'fastdb.c3.unam.mx'
-dbname = 'epi_puma_censo_inegi_2020'
+dbname = 'epi_puma_censo_inegi_2020_monitor'
 dbport = '5433'
 dbuser = 'monitor'
 dbpass = 'monitor123'
