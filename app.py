@@ -1,116 +1,104 @@
 from flask import Flask, jsonify, request
 import psycopg2
+import os
 
 app = Flask(__name__)
 
-dbhost = 'fastdb.c3.unam.mx'
-dbname = 'epi_puma_censo_inegi_2020_monitor'
-dbport = '5433'
-dbuser = 'monitor'
-dbpass = 'monitor123'
+# Se obtienen las credenciales desde variables de entorno
+dbhost = os.getenv('DB_HOST', 'fastdb.c3.unam.mx')
+dbname = os.getenv('DB_NAME', 'epi_puma_censo_inegi_2020_monitor')
+dbport = os.getenv('DB_PORT', '5433')
+dbuser = os.getenv('DB_USER', 'monitor')
+dbpass = os.getenv('DB_PASS', 'monitor123')
 
-def conexion():
+def get_connection():
+    """Obtiene la conexión a la base de datos."""
     conn_string = f'host={dbhost} dbname={dbname} user={dbuser} password={dbpass} port={dbport}'
-    conn = psycopg2.connect(conn_string)
-    return conn
+    return psycopg2.connect(conn_string)
 
 @app.route('/')
 def saludo():
-    return jsonify({'hola':'mundo'})
+    """Ruta de saludo inicial."""
+    return jsonify({'hola': 'mundo'})
 
 @app.route('/variables')
 def fetch_variables():
-    conn = conexion()
-
-    with conn.cursor() as curs:
-        curs.execute("""
-                     WITH aux AS (
-                        SELECT id, 
-                            CONCAT(name, '_-_', interval) AS name, 
-                            ARRAY[mesh] :: varchar[] AS available_grids, 
-                            0 AS "level_size", 
-                            ARRAY[] :: varchar[] as "filter_fields"
-                        FROM covariable
-                        )
-                    SELECT json_agg(aux) FROM aux
-                     ;
-                     """
-                     )
-
-        row = curs.fetchone() # Devuelve una tupla
-    conn.close()
+    """Obtiene las variables de la base de datos."""
+    with get_connection() as conn:
+        with conn.cursor() as curs:
+            query = """
+                WITH aux AS (
+                    SELECT id, 
+                           CONCAT(name, '_-_', interval) AS name, 
+                           ARRAY[mesh] :: varchar[] AS available_grids, 
+                           0 AS level_size, 
+                           ARRAY[] :: varchar[] AS filter_fields
+                    FROM covariable
+                )
+                SELECT json_agg(aux) FROM aux;
+            """
+            curs.execute(query)
+            row = curs.fetchone()  # Devuelve una tupla
     return jsonify(row[0])
 
 @app.route('/variables/<id>')
 def variables_id(id):
-    conn_string = f'host={dbhost} dbname={dbname} user={dbuser} password={dbpass} port={dbport}'
-    conn = psycopg2.connect(conn_string)
-
+    """Obtiene una variable específica por su ID."""
     q = request.args.get('q', '*')
-    offset = request.args.get('offset', 'null')
+    offset = request.args.get('offset', '0')  # Cambiado a 0 por defecto
     limit = request.args.get('limit', 10)
 
-    # Qstr = f"SELECT {q} FROM public.covariable WHERE id = {str(id)} LIMIT {str(limit)} OFFSET {str(offset)};"
-    Qstr = f"SELECT id, 0 as level_id FROM public.covariable WHERE id = {str(id)} LIMIT {str(limit)} OFFSET {str(offset)};"
-    # WHERE id = {str()}
-    R_dict = {}
-    with conn.cursor() as curs:
-        curs.execute(Qstr)
+    with get_connection() as conn:
+        with conn.cursor() as curs:
+            query = """
+                SELECT id, 0 as level_id 
+                FROM public.covariable 
+                WHERE id = %s 
+                LIMIT %s OFFSET %s;
+            """
+            curs.execute(query, (id, limit, offset))
+            r = curs.fetchone()
 
-        r = curs.fetchone()
-        print(r)
-        cols = [desc[0] for desc in curs.description]   #Nombre de las columnas
-        R_dict = {columna: r[i] for i, columna in enumerate(cols)}  # Obtener la consulta como diccionario de pares nombre de la columna, valor en la columna.
-        # print(r[0])
+            if not r:
+                return jsonify({'error': 'ID no encontrado'}), 404
+
+            cols = [desc[0] for desc in curs.description]  # Nombres de las columnas
+            result = {columna: r[i] for i, columna in enumerate(cols)}
     
-    # result = {'id': R_dict['id'], 'level_id': 0, 'data':{'name':R_dict['name']}}
-    result = {'id': R_dict['id'], 'level_id': 0, 'data':{}}
-
     return jsonify(result)
 
 @app.route('/get-data/<id>')
 def get_data_id(id):
-    conn = conexion()
-    grid_id = request.args.get('grid_id') # mun | state | ageb
-
-    # Desde la URL (Query Strings): (ej. levels_id=1,2,3)
+    """Obtiene datos específicos de una covariable por ID y filtros opcionales."""
+    grid_id = request.args.get('grid_id')  # mun | state | ageb
     levels_id = request.args.get('levels_id', type=lambda v: v.split(','))
     filter_names = request.args.get('filter_names', type=lambda v: v.split(','))
     filter_values = request.args.get('filter_values', type=lambda v: v.split(','))
 
-    # #Desde el body de la solicitud como JSON:
-    # data = request.get_json()
-    # levels_id = data.get('levels_id')
-    # filter_names = data.get('filter_names')
-    # filter_values = data.get('filter_values')
+    if not grid_id:
+        return jsonify({'error': 'grid_id es requerido'}), 400
 
-    # #Desde un formulario: (ej. levels_id=1,2,3 en el formulario)
-    # levels_id = request.form.get('levels_id').split(',')
-    # filter_names = request.form.get('filter_names').split(',')
-    # filter_values = request.form.get('filter_values').split(',')
+    with get_connection() as conn:
+        with conn.cursor() as curs:
+            query = f"""
+                WITH aux AS (
+                    SELECT id, 
+                           %s as grid_id, 
+                           0 as level_id, 
+                           cells_{grid_id} :: integer[] AS cells, 
+                           array_length(cells_{grid_id}, 1) AS n
+                    FROM covariable
+                    WHERE id = %s
+                )
+                SELECT json_agg(aux) FROM aux;
+            """
+            curs.execute(query, (grid_id, id))
+            row = curs.fetchone()
 
-    with conn.cursor() as curs:
-        curs.execute(f"""
-                     WITH aux AS (
-                        SELECT id, 
-                            '{grid_id}' as "grid_id", 
-                            0 as "level_id", 
-                            cells_{grid_id} :: integer[] as cells, 
-                            array_length(cells_{grid_id},1) as n
-                        FROM covariable
-                        WHERE id = {id}
-                        )
-                    SELECT json_agg(aux) FROM aux
-                     ;
-                     """
-                     )
-
-        row = curs.fetchone() # Devuelve una tupla
-    conn.close()
+    if not row:
+        return jsonify({'error': 'ID no encontrado'}), 404
 
     return jsonify(row[0])
-
-
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=2112)
