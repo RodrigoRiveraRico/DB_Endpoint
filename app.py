@@ -1,6 +1,13 @@
 from flask import Flask, jsonify, request
 import psycopg2
 import os
+import sys
+
+if sys.version_info[0:2] != (3, 11):
+    print("\n\t==== IMPORTANTE ====")
+    print(f"Versión de Python del sistema: {sys.version_info[0]}.{sys.version_info[1]}")
+    print("La plataforma fue probada con una versión de Python 3.11")
+    print("\t====================\n")
 
 app = Flask(__name__)
 
@@ -52,7 +59,7 @@ def variables_id(id):
         with conn.cursor() as curs:
             query = """
                 SELECT id, 0 as level_id 
-                FROM public.covariable 
+                FROM covariable 
                 WHERE id = %s 
                 LIMIT %s OFFSET %s;
             """
